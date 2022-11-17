@@ -49,14 +49,12 @@ int main(int argc, char * argv[]) {
                 random_points(points, iter_per_step);
                 MPI_Send(points, 3 * iter_per_step, MPI_DOUBLE, k, 1, MPI_COMM_WORLD);
             }
-            MPI_Barrier(MPI_COMM_WORLD);
             MPI_Reduce(&local_sum, &sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
             total_sum += sum;
             total_points += iter_per_step * (size - 1);
             res = volume * total_sum / total_points;
             err = fabs(true_res - res);
             _continue = err >= eps ? 1 : 0;
-            MPI_Barrier(MPI_COMM_WORLD);
             MPI_Bcast(&_continue, 1, MPI_INT, 0, MPI_COMM_WORLD);
         }
     }
@@ -67,10 +65,7 @@ int main(int argc, char * argv[]) {
             double local_sum = 0;
             for (int i = 0; i < 3 * iter_per_step; i += 3)
                 local_sum += F(points[i], points[i + 1], points[i + 2]);         
-            sum = 0;
-            MPI_Barrier(MPI_COMM_WORLD);
             MPI_Reduce(&local_sum, &sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-            MPI_Barrier(MPI_COMM_WORLD);
             MPI_Bcast(&_continue, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
         }
