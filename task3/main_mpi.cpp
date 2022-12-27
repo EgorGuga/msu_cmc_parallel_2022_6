@@ -166,11 +166,11 @@ double phi(double x, double y, double z, const Grid &grid) {
     return u_analytical(x, y, z, 0, grid);
 }
 
-int local_index(int x, int y, int z, const Block block) {
+int local_index(int x, int y, int z, const Block &block) {
     return (x - block.x_min) * block.y_size * block.z_size + (y - block.y_min) * block.z_size + (z - block.z_min);
 }
 
-double find_u(int u_idx, int x, int y, int z, const std::vector< std::vector<double> > &recieved, Grid &grid, const Block block) {
+double find_u(int u_idx, int x, int y, int z, const std::vector< std::vector<double> > &recieved, Grid &grid, const Block &block) {
 
     if (block.x_min <= x and x <= block.x_max and block.y_min <= y and y <= block.y_max and block.z_min <= z and z <= block.z_max)
         return grid.u[u_idx][local_index(x, y, z, block)];
@@ -187,7 +187,7 @@ double find_u(int u_idx, int x, int y, int z, const std::vector< std::vector<dou
     throw std::runtime_error("Cannot find u!");
 }
 
-double laplace_operator(int u_idx, int x, int y, int z, const std::vector< std::vector<double>> &recv, Grid &grid, const Block block) {
+double laplace_operator(int u_idx, int x, int y, int z, const std::vector< std::vector<double>> &recv, Grid &grid, const Block &block) {
     double dx = (find_u(u_idx, x, y - 1, z, recv, grid, block) - 2 * grid.u[u_idx][local_index(x, y, z, block)] +
                  find_u(u_idx, x, y + 1, z, recv, grid, block)) / (grid.H_x * grid.H_x);
     double dy = (find_u(u_idx, x - 1, y, z, recv, grid, block) - 2 * grid.u[u_idx][local_index(x, y, z, block)] +
@@ -197,66 +197,58 @@ double laplace_operator(int u_idx, int x, int y, int z, const std::vector< std::
     return dx + dy + dz;
 }
 
-void fill_borders(int u_idx, Grid &grid, const Block block) {
+void fill_borders(int u_idx, Grid &grid, const Block &block) {
     int N = grid.N;
 
     if (block.x_min == 0)
-        #pragma omp parallel for
+        #pragma omp parallel for collapse(2)
         for (int y = block.y_min; y <= block.y_max; y++)
-            #pragma omp parallel for
             for (int z = block.z_min; z <= block.z_max; z++)
                 grid.u[u_idx][local_index(block.x_min, y, z, block)] = 0;
 
     if (block.x_max == N)
-        #pragma omp parallel for
+        #pragma omp parallel for collapse(2)
         for (int y = block.y_min; y <= block.y_max; y++)
-            #pragma omp parallel for
             for (int z = block.z_min; z <= block.z_max; z++)
                 grid.u[u_idx][local_index(block.x_max, y, z, block)] = 0;
 
     if (block.y_min == 0)
-        #pragma omp parallel for
+        #pragma omp parallel for collapse(2)
         for (int x = block.x_min; x <= block.x_max; x++)
-            #pragma omp parallel for
             for (int z = block.z_min; z <= block.z_max; z++)
                 grid.u[u_idx][local_index(x, block.y_min, z, block)] = 0;
 
     if (block.y_max == N)
-        #pragma omp parallel for
+        #pragma omp parallel for collapse(2)
         for (int x = block.x_min; x <= block.x_max; x++)
-            #pragma omp parallel for
             for (int z = block.z_min; z <= block.z_max; z++)
                 grid.u[u_idx][local_index(x, block.y_max, z, block)] = 0;
 
     if (block.z_min == 0)
-        #pragma omp parallel for
+        #pragma omp parallel for collapse(2)
         for (int x = block.x_min; x <= block.x_max; x++)
-            #pragma omp parallel for
             for (int y = block.y_min; y <= block.y_max; y++)
                 grid.u[u_idx][local_index(x, y, block.z_min, block)] = 0;
 
     if (block.z_max == N)
-        #pragma omp parallel for
+        #pragma omp parallel for collapse(2)
         for (int x = block.x_min; x <= block.x_max; x++)
-            #pragma omp parallel for
             for (int y = block.y_min; y <= block.y_max; y++)
                 grid.u[u_idx][local_index(x, y, block.z_max, block)] = 0;
 }
 
-std::vector<double> to_send(int u_idx, const Block block, const Block block2, Grid &grid) {
+std::vector<double> to_send(int u_idx, const Block &block, const Block &block2, Grid &grid) {
     std::vector<double> send(block2.size);
 
-    #pragma omp parallel for
+    #pragma omp parallel for collapse(3)
     for (int x = block2.x_min; x <= block2.x_max; x++)
-        #pragma omp parallel for
         for (int y = block2.y_min; y <= block2.y_max; y++)
-            #pragma omp parallel for
             for (int z = block2.z_min; z <= block2.z_max; z++)
                 send[local_index(x, y, z, block2)] = grid.u[u_idx][local_index(x, y, z, block)];
     return send;
 }
 
-std::vector< std::vector<double> > send_recv(int u_idx, Grid &grid, const Block block) {
+std::vector< std::vector<double> > send_recv(int u_idx, Grid &grid, const Block &block) {
     std::vector< std::vector<double> > recv(grid.recv_blocks.size());
     std::vector<MPI_Request> request(2);
     std::vector<MPI_Status> status(2);
@@ -271,7 +263,7 @@ std::vector< std::vector<double> > send_recv(int u_idx, Grid &grid, const Block 
     return recv;
 }
 
-void fill_blocks(Grid &grid, const Block block) {
+void fill_blocks(Grid &grid, const Block &block) {
     fill_borders(0, grid, block);
     fill_borders(1, grid, block);
 
@@ -283,27 +275,23 @@ void fill_blocks(Grid &grid, const Block block) {
     int z_min = std::max(block.z_min, 1);
     int z_max = std::min(block.z_max, N - 1);
 
-    #pragma omp parallel for
+    #pragma omp parallel for collapse(3)
     for (int x = x_min; x <= x_max; x++)
-        #pragma omp parallel for
         for (int y = y_min; y <= y_max; y++)
-            #pragma omp parallel for
             for (int z = z_min; z <= z_max; z++)
                 grid.u[0][local_index(x, y, z, block)] = phi(x * grid.H_x, y * grid.H_y, z * grid.H_z, grid);
 
     std::vector< std::vector<double> > recv = send_recv(0, grid, block);
 
-    #pragma omp parallel for
+    #pragma omp parallel for collapse(3)
     for (int x = x_min; x <= x_max; x++)
-        #pragma omp parallel for
         for (int y = y_min; y <= y_max; y++)
-            #pragma omp parallel for
             for (int z = z_min; z <= z_max; z++)
                 grid.u[1][local_index(x, y, z, block)] = grid.u[0][local_index(x, y, z, block)] +
                                                          grid.tau * grid.tau / 2 * laplace_operator(0, x, y, z, recv, grid, block);
 }
 
-void calculate_u(int step, Grid &grid, const Block block) {
+void calculate_u(int step, Grid &grid, const Block &block) {
     int N = grid.N;
     int x_min = std::max(block.x_min, 1); int x_max = std::min(block.x_max, N - 1);
     int y_min = std::max(block.y_min, 1); int y_max = std::min(block.y_max, N - 1);
@@ -311,11 +299,9 @@ void calculate_u(int step, Grid &grid, const Block block) {
 
     std::vector< std::vector<double> > recv = send_recv((step + 2) % 3, grid, block);
 
-    #pragma omp parallel for
+    #pragma omp parallel for collapse(3)
     for (int x = x_min; x <= x_max; x++)
-        #pragma omp parallel for
         for (int y = y_min; y <= y_max; y++)
-            #pragma omp parallel for
             for (int z = z_min; z <= z_max; z++)
                 grid.u[step % 3][local_index(x, y, z, block)] = 2 * grid.u[(step + 2) % 3][local_index(x, y, z, block)] -
                                                                 grid.u[(step + 1) % 3][local_index(x, y, z, block)] +
@@ -323,16 +309,13 @@ void calculate_u(int step, Grid &grid, const Block block) {
     fill_borders(step % 3, grid, block);
 }
 
-double eval_error(int u_idx, double t, Grid &grid, const Block block) {
+double eval_error(int u_idx, double t, Grid &grid, const Block &block) {
     double localError = 0, error = 0;
 
-    #pragma omp parallel for
+    #pragma omp parallel for collapse(3)  reduction(max: localError)
     for (int x = block.x_min; x <= block.x_max; x++)
-        #pragma omp parallel for
         for (int y = block.y_min; y <= block.y_max; y++)
-            #pragma omp parallel for
             for (int z = block.z_min; z <= block.z_max; z++)
-                #pragma omp critical
                     localError = std::max(localError, fabs(grid.u[u_idx][local_index(x, y, z, block)] -
                                                       u_analytical(x * grid.H_x, y * grid.H_y,z * grid.H_z, t, grid)));
     MPI_Reduce(&localError, &error, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);

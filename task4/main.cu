@@ -157,19 +157,19 @@ void transfer_border_blocks(const std::vector<Block> &blocks, thrust::host_vecto
     }
 }
 
-__device__ double u_analytical(double x, double y, double z, double t, double a_t, const Grid grid) {
+__device__ double u_analytical(double x, double y, double z, double t, double a_t, const Grid &grid) {
     return sin(M_PI * x / grid.L_x) * sin(M_PI * y / grid.L_y) * sin(M_PI * z / grid.L_z) * cos(a_t * t + 2 * M_PI);
 }
 
-__device__ double phi(double x, double y, double z, double a_t, const Grid grid) {
+__device__ double phi(double x, double y, double z, double a_t, const Grid &grid) {
     return u_analytical(x, y, z, 0, a_t, grid);
 }
 
-__host__ __device__ int local_index(int x, int y, int z, const Block block) {
+__host__ __device__ int local_index(int x, int y, int z, const Block &block) {
     return (x - block.x_min) * block.y_size * block.z_size + (y - block.y_min) * block.z_size + (z - block.z_min);
 }
 
-__device__ double find_u(double *u, int x, int y, int z, const Block block, double *to_recv, Block *recv, int d_size) {
+__device__ double find_u(double *u, int x, int y, int z, const Block &block, double *to_recv, Block *recv, int d_size) {
     if (block.x_min <= x and x <= block.x_max and block.y_min <= y and y <= block.y_max and block.z_min <= z and z <= block.z_max)
         return u[local_index(x, y, z, block)];
 
@@ -186,7 +186,7 @@ __device__ double find_u(double *u, int x, int y, int z, const Block block, doub
     return 1;
 }
 
-__device__ double laplace_operator(double *u, int x, int y, int z, const Block block, const Grid grid, double *to_recv,
+__device__ double laplace_operator(double *u, int x, int y, int z, const Block &block, const Grid &grid, double *to_recv,
                                    Block *recv, int d_size) {
     double dx = (find_u(u, x, y - 1, z, block, to_recv, recv, d_size) - 2 * u[local_index(x, y, z, block)] + find_u(u, x, y + 1, z, block, to_recv, recv, d_size)) / (grid.H_y * grid.H_y);
     double dy = (find_u(u, x - 1, y, z, block, to_recv, recv, d_size) - 2 * u[local_index(x, y, z, block)] + find_u(u, x + 1, y, z, block, to_recv, recv, d_size)) / (grid.H_x * grid.H_x);
@@ -326,7 +326,7 @@ __global__ void calculate_u_kernal(double *u, double *u0, double *u1, double *to
     int z = z_min + idx % z_size;
 
     u[local_index(x, y, z, block)] = 2 * u1[local_index(x, y, z, block)] - u0[local_index(x, y, z, block)] +
-                         grid.tau * grid.tau * laplace_operator(u1, x, y, z, block, grid, to_recv, recv, d_size);
+                                     grid.tau * grid.tau * laplace_operator(u1, x, y, z, block, grid, to_recv, recv, d_size);
 }
 
 void calculate_u(int step, const Grid grid, const Block block, std::vector< thrust::device_vector<double> > &u, thrust::host_vector<Block> &send, thrust::host_vector<Block> &recv, thrust::host_vector<int> &ranks) {
